@@ -1,0 +1,107 @@
+{
+  "link_failure": {
+    "n_runs": 10,
+    "static_pdr": {
+      "mean": 0.925,
+      "std": 0.23717082451262844
+    },
+    "healing_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "pdr_mann_whitney_p_value": 0.36812025069351895,
+    "pdr_statistically_significant": false,
+    "healing_mttd_ms": {
+      "mean": 15.0,
+      "std": 0.0
+    },
+    "healing_mttr_ms": {
+      "mean": 23.0,
+      "std": 0.0
+    }
+  },
+  "router_crash": {
+    "n_runs": 10,
+    "static_pdr": {
+      "mean": 0.925,
+      "std": 0.23717082451262844
+    },
+    "healing_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "pdr_mann_whitney_p_value": 0.36812025069351895,
+    "pdr_statistically_significant": false,
+    "healing_mttd_ms": {
+      "mean": 15.0,
+      "std": 0.0
+    },
+    "healing_mttr_ms": {
+      "mean": 23.0,
+      "std": 0.0
+    }
+  },
+  "congestion": {
+    "n_runs": 10,
+    "static_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "healing_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "pdr_mann_whitney_p_value": NaN,
+    "pdr_statistically_significant": false,
+    "healing_mttd_ms": {
+      "mean": 120.0,
+      "std": 0.0
+    },
+    "healing_mttr_ms": {
+      "mean": 128.0,
+      "std": 0.0
+    }
+  },
+  "degradation": {
+    "n_runs": 10,
+    "static_pdr": {
+      "mean": 0.9799999999999999,
+      "std": 0.0483045891539648
+    },
+    "healing_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "pdr_mann_whitney_p_value": 0.16807831903497028,
+    "pdr_statistically_significant": false,
+    "healing_mttd_ms": {
+      "mean": 120.0,
+      "std": 0.0
+    },
+    "healing_mttr_ms": {
+      "mean": 128.0,
+      "std": 0.0
+    }
+  },
+  "multi_fault": {
+    "n_runs": 10,
+    "static_pdr": {
+      "mean": 0.925,
+      "std": 0.23717082451262844
+    },
+    "healing_pdr": {
+      "mean": 1.0,
+      "std": 0.0
+    },
+    "pdr_mann_whitney_p_value": 0.36812025069351895,
+    "pdr_statistically_significant": false,
+    "healing_mttd_ms": {
+      "mean": 120.0,
+      "std": 0.0
+    },
+    "healing_mttr_ms": {
+      "mean": 128.0,
+      "std": 0.0
+    }
+  }
+}

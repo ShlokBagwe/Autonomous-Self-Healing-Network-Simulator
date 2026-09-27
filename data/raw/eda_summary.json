@@ -1,0 +1,90 @@
+{
+  "total_samples": 6000,
+  "class_balance": {
+    "healthy": 3600,
+    "congested": 1500,
+    "failed": 900
+  },
+  "feature_means_by_state": {
+    "latency": {
+      "congested": 74.98036666666667,
+      "failed": 446.9258666666667,
+      "healthy": 8.081125
+    },
+    "jitter": {
+      "congested": 22.038313333333335,
+      "failed": 50.02333333333333,
+      "healthy": 1.1876583333333333
+    },
+    "packet_loss": {
+      "congested": 8.03034,
+      "failed": 97.89583333333333,
+      "healthy": 0.19585833333333333
+    },
+    "queue": {
+      "congested": 54.23133333333333,
+      "failed": 0.51,
+      "healthy": 1.511111111111111
+    },
+    "throughput": {
+      "congested": 32.04439333333333,
+      "failed": 0.48643333333333333,
+      "healthy": 92.0424888888889
+    },
+    "utilization": {
+      "congested": 0.908878,
+      "failed": 0.010477777777777777,
+      "healthy": 0.27992833333333333
+    }
+  },
+  "correlation_matrix": {
+    "latency": {
+      "latency": 1.0,
+      "jitter": 0.8677746469398927,
+      "packet_loss": 0.974594398362869,
+      "queue": -0.0705350566298733,
+      "throughput": -0.8148651248689848,
+      "utilization": -0.34629667810834547
+    },
+    "jitter": {
+      "latency": 0.8677746469398927,
+      "jitter": 1.0,
+      "packet_loss": 0.8554920070332502,
+      "queue": 0.23382966742787983,
+      "throughput": -0.9057341022908038,
+      "utilization": -0.027183163463210758
+    },
+    "packet_loss": {
+      "latency": 0.974594398362869,
+      "jitter": 0.8554920070332502,
+      "packet_loss": 1.0,
+      "queue": -0.15658231112658144,
+      "throughput": -0.7792795974755897,
+      "utilization": -0.4342410986541483
+    },
+    "queue": {
+      "latency": -0.0705350566298733,
+      "jitter": 0.23382966742787983,
+      "packet_loss": -0.15658231112658144,
+      "queue": 1.0,
+      "throughput": -0.4614267000507786,
+      "utilization": 0.9150757823941374
+    },
+    "throughput": {
+      "latency": -0.8148651248689848,
+      "jitter": -0.9057341022908038,
+      "packet_loss": -0.7792795974755897,
+      "queue": -0.4614267000507786,
+      "throughput": 1.0,
+      "utilization": -0.20598922425373392
+    },
+    "utilization": {
+      "latency": -0.34629667810834547,
+      "jitter": -0.027183163463210758,
+      "packet_loss": -0.4342410986541483,
+      "queue": 0.9150757823941374,
+      "throughput": -0.20598922425373392,
+      "utilization": 1.0
+    }
+  }
+}

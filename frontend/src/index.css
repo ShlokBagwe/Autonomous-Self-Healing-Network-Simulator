@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #07090e;
+  color: #f8fafc;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+}
+
+/* SVG node pulse for active route */
+@keyframes node-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.node-active { animation: node-pulse 2s ease-in-out infinite; }
+
+/* Status dot pulse */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+  50% { opacity: 0.7; transform: scale(1.15); box-shadow: 0 0 0 4px rgba(16,185,129,0); }
+}
+.pulse-dot { animation: status-pulse 2s ease-in-out infinite; }
+
+/* Edge fault blink */
+@keyframes fault-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.edge-fault { animation: fault-blink 0.8s ease-in-out infinite; }
+
+/* Feed slide-in */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.feed-item-enter { animation: slide-in 0.25s ease-out; }
+
+/* Mono text */
+.mono { font-family: var(--font-mono); }
