@@ -6,14 +6,14 @@
  *   alerts     — Alert[]
  *   reroutes   — RerouteEvent[]
  */
-export default function MetricsPanel({ telemetry, alerts, reroutes }) {
+export default function MetricsPanel({ telemetry, alerts, reroutes, metricsSummary }) {
   const readings = Array.from(telemetry?.values() ?? [])
 
-  // Average latency across operational links carrying traffic
-  // Failed links (packet_loss >= 100) have no valid round-trip transmissions and are excluded from RTT averaging
-  const operationalReadings = readings.filter(r => r && r.packet_loss < 100 && r.latency < 1000)
-  const avgLatency = operationalReadings.length
-    ? (operationalReadings.reduce((s, r) => s + r.latency, 0) / operationalReadings.length).toFixed(1)
+  // Standardized Avg RTT Latency:
+  // Strictly derived from backend metricsSummary as the single source of truth.
+  // Displays '—' until the backend metric arrives, preventing any partial or collapsed local averaging.
+  const avgLatency = metricsSummary?.avg_rtt_latency != null
+    ? `${metricsSummary.avg_rtt_latency.toFixed(1)} ms`
     : '—'
 
   // PDR proxy: proportion of links with packet_loss = 0
@@ -22,18 +22,26 @@ export default function MetricsPanel({ telemetry, alerts, reroutes }) {
     ? `${((healthyLinks / readings.length) * 100).toFixed(0)}%`
     : '—'
 
-  // TRAP vs ML agreement rate from reconciliation data
-  const trapAlerts = alerts.filter(a => a.source === 'snmp_trap').length
-  const mlAlerts   = alerts.filter(a => a.source === 'ml_engine').length
-  const totalAlerts = trapAlerts + mlAlerts
-  const agreementRate = totalAlerts > 0
-    ? `${Math.min(100, Math.round((Math.min(trapAlerts, mlAlerts) / Math.max(trapAlerts, mlAlerts, 1)) * 100))}%`
+  // Standardized TRAP/ML Agreement Rate:
+  // Strictly derived from backend metricsSummary as the single source of truth.
+  // Displays '—' until alerts/reconciliation records exist.
+  const agreementRate = metricsSummary?.agreement_rate != null
+    ? `${(metricsSummary.agreement_rate * 100).toFixed(0)}%`
     : '—'
 
-  // Mean MTTR from reroute events
-  const mttrs = reroutes.map(r => r.recovery_latency_ms).filter(v => v != null)
-  const meanMttr = mttrs.length
-    ? `${(mttrs.reduce((a, b) => a + b, 0) / mttrs.length).toFixed(0)} ms`
+  // Split MTTR: Reactive (SNMP TRAP-triggered) vs Proactive (ML Engine-triggered)
+  const reactiveMttrs = reroutes
+    .filter(r => r.trigger_alert?.source === 'snmp_trap' && r.recovery_latency_ms != null)
+    .map(r => r.recovery_latency_ms)
+  const proactiveMttrs = reroutes
+    .filter(r => r.trigger_alert?.source === 'ml_engine' && r.recovery_latency_ms != null)
+    .map(r => r.recovery_latency_ms)
+
+  const reactiveMttr = reactiveMttrs.length
+    ? `${(reactiveMttrs.reduce((a, b) => a + b, 0) / reactiveMttrs.length).toFixed(1)} ms`
+    : '—'
+  const proactiveMttr = proactiveMttrs.length
+    ? `${(proactiveMttrs.reduce((a, b) => a + b, 0) / proactiveMttrs.length).toFixed(1)} ms`
     : '—'
 
   // Avg utilization
@@ -47,16 +55,17 @@ export default function MetricsPanel({ telemetry, alerts, reroutes }) {
     : '—'
 
   const metrics = [
-    { label: 'Avg RTT Latency',    value: `${avgLatency} ms`, color: 'text-sky-400',     id: 'metric-latency' },
-    { label: 'Packet Delivery',    value: pdr,                color: 'text-emerald-400', id: 'metric-pdr'     },
-    { label: 'TRAP/ML Agreement',  value: agreementRate,      color: 'text-indigo-400',  id: 'metric-agree'   },
-    { label: 'Mean MTTR',          value: meanMttr,           color: 'text-amber-400',   id: 'metric-mttr'    },
-    { label: 'Avg Utilization',    value: avgUtil,            color: 'text-sky-300',     id: 'metric-util'    },
-    { label: 'Avg Jitter',         value: avgJitter,          color: 'text-purple-400',  id: 'metric-jitter'  },
+    { label: 'Avg RTT Latency',   value: avgLatency,    color: 'text-sky-400',     id: 'metric-latency'        },
+    { label: 'Packet Delivery',   value: pdr,           color: 'text-emerald-400', id: 'metric-pdr'            },
+    { label: 'TRAP/ML Agreement', value: agreementRate, color: 'text-indigo-400',  id: 'metric-agree'          },
+    { label: 'Reactive MTTR',     value: reactiveMttr,  color: 'text-emerald-400', id: 'metric-mttr-reactive' },
+    { label: 'Proactive MTTR',    value: proactiveMttr, color: 'text-amber-400',   id: 'metric-mttr-proactive'},
+    { label: 'Avg Utilization',   value: avgUtil,       color: 'text-sky-300',     id: 'metric-util'           },
+    { label: 'Avg Jitter',        value: avgJitter,     color: 'text-purple-400',  id: 'metric-jitter'         },
   ]
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {metrics.map(m => (
         <div
           key={m.id}

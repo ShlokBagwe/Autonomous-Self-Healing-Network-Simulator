@@ -204,6 +204,34 @@ export default function TopologyGraph({ topology, alerts, reroutes, telemetry, o
         const midX = Math.round((p1.x + p2.x) / 2)
         const midY = Math.round((p1.y + p2.y) / 2)
 
+        const labelText = isFaulted
+          ? 'FAILED'
+          : (currentLatency != null && currentLatency < 1000
+              ? `${Number(currentLatency).toFixed(1)}ms`
+              : null)
+
+        let labelFill = '#94a3b8'
+        let labelFontWeight = '400'
+        let labelOpacity = '0.75'
+
+        if (isFaulted) {
+          labelFill = '#f43f5e'
+          labelFontWeight = '700'
+          labelOpacity = '0.95'
+        } else if (isCongested) {
+          labelFill = '#f59e0b'
+          labelFontWeight = '700'
+          labelOpacity = '0.95'
+        } else if (isActive) {
+          labelFill = '#38bdf8'
+          labelFontWeight = '600'
+          labelOpacity = '0.95'
+        } else if (isSelected) {
+          labelFill = '#818cf8'
+          labelFontWeight = '600'
+          labelOpacity = '0.9'
+        }
+
         return (
           <g key={`${edge.source}-${edge.target}`}>
             <line
@@ -225,21 +253,20 @@ export default function TopologyGraph({ topology, alerts, reroutes, telemetry, o
               className="cursor-pointer"
               onClick={() => onSelect?.(`${edge.source}-${edge.target}`, 'edge')}
             />
-            {isActive && (
+            {labelText && (
               <text
                 x={midX}
                 y={midY - 6}
                 textAnchor="middle"
-                fill={isFaulted ? '#f43f5e' : (isCongested ? '#f59e0b' : '#38bdf8')}
+                fill={labelFill}
                 fontSize="9"
-                opacity="0.85"
-                fontWeight={isCongested ? '700' : '400'}
+                opacity={labelOpacity}
+                fontWeight={labelFontWeight}
+                stroke="#07090e"
+                strokeWidth="2.5"
+                paintOrder="stroke fill"
               >
-                {isFaulted
-                  ? 'FAILED'
-                  : (currentLatency != null && currentLatency < 1000
-                      ? `${Number(currentLatency).toFixed(1)}ms`
-                      : '')}
+                {labelText}
               </text>
             )}
           </g>

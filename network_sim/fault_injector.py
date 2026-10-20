@@ -8,8 +8,9 @@ import time
 from typing import Dict, List, Literal, Optional, Tuple, Union
 import networkx as nx
 
-from shared.config import TOPIC_FAULT
+from shared.config import TOPIC_FAULT, TOPIC_TELEMETRY
 from shared.event_bus import bus
+from shared.schemas import TelemetryReading
 from network_sim.snmp_agent import agent_manager
 
 logger = logging.getLogger("fault_injector")
@@ -40,7 +41,8 @@ class FaultInjector:
     ) -> Dict:
         """
         Inject a simulated fault into the graph, record t_fault_onset,
-        fire reactive SNMP TRAP when appropriate, and publish 'fault.injected'.
+        fire reactive SNMP TRAP when appropriate, emit one final pre-silence
+        TelemetryReading for ML classification, and publish 'fault.injected'.
         """
         if timestamp is None:
             timestamp = float(time.time())
@@ -58,8 +60,10 @@ class FaultInjector:
         if kind == "link_failure":
             link_str = str(target)
             endpoints = _resolve_link_nodes(link_str)
+            base_lat = 8.0
             if endpoints and self.graph.has_edge(*endpoints):
                 u, v = endpoints
+                base_lat = float(self.graph.edges[u, v].get("base_latency", self.graph.edges[u, v].get("latency", 8.0)))
                 self.graph.edges[u, v].update({
                     "failure_risk": 1.0,
                     "packet_loss": 100.0,
@@ -70,11 +74,31 @@ class FaultInjector:
             # Reactive TRAP fires immediately on hard failure
             agent_manager.fire_trap(link_str, timestamp=timestamp)
 
+            # Emit exactly one final pre-silence TelemetryReading before agent goes silent
+            if endpoints and self.graph.has_edge(*endpoints):
+                u, v = endpoints
+                canon_link = f"{min(u, v)}-{max(u, v)}"
+                final_reading = TelemetryReading(
+                    timestamp=round(timestamp, 3),
+                    link=canon_link,
+                    latency=round(base_lat + 342.0, 2),  # ~350ms, matching ML failed distribution
+                    jitter=45.0,
+                    packet_loss=100.0,
+                    queue=0.0,
+                    throughput=0.0,
+                    utilization=0.0,
+                    state="failed",
+                )
+                bus.publish(TOPIC_TELEMETRY, final_reading)
+
         elif kind == "router_crash":
             node_str = str(target)
+            affected_edges = []
             if self.graph.has_node(node_str):
                 self.graph.nodes[node_str]["status"] = "down"
-                for neighbor in list(self.graph.neighbors(node_str)):
+                for neighbor in sorted(list(self.graph.neighbors(node_str))):
+                    base_lat = float(self.graph.edges[node_str, neighbor].get("base_latency", self.graph.edges[node_str, neighbor].get("latency", 8.0)))
+                    affected_edges.append((node_str, neighbor, base_lat))
                     self.graph.edges[node_str, neighbor].update({
                         "failure_risk": 1.0,
                         "packet_loss": 100.0,
@@ -83,6 +107,22 @@ class FaultInjector:
                         "status": "failed",
                     })
             agent_manager.fire_trap(node_str, timestamp=timestamp)
+
+            # Emit exactly one final pre-silence TelemetryReading for each incident edge
+            for u, v, base_lat in affected_edges:
+                canon_link = f"{min(u, v)}-{max(u, v)}"
+                final_reading = TelemetryReading(
+                    timestamp=round(timestamp, 3),
+                    link=canon_link,
+                    latency=round(base_lat + 342.0, 2),
+                    jitter=45.0,
+                    packet_loss=100.0,
+                    queue=0.0,
+                    throughput=0.0,
+                    utilization=0.0,
+                    state="failed",
+                )
+                bus.publish(TOPIC_TELEMETRY, final_reading)
 
         elif kind == "congestion":
             link_str = str(target)
@@ -106,14 +146,16 @@ class FaultInjector:
             endpoints = _resolve_link_nodes(link_str)
             if endpoints and self.graph.has_edge(*endpoints):
                 u, v = endpoints
+                base_lat = float(self.graph.edges[u, v].get("base_latency", self.graph.edges[u, v].get("latency", 8.0)))
+                # Initial onset values: mild degradation, which worsens progressively on each subsequent poll tick
                 self.graph.edges[u, v].update({
-                    "congestion_level": 0.50,
-                    "utilization": 0.70,
-                    "queue": 30,
-                    "latency": 65.0,
-                    "jitter": 15.0,
-                    "packet_loss": 4.5,
-                    "throughput": 45.0,
+                    "congestion_level": 0.15,
+                    "utilization": 0.40,
+                    "queue": 5.0,
+                    "latency": round(base_lat + 4.0, 2),
+                    "jitter": 2.5,
+                    "packet_loss": 0.5,
+                    "throughput": 85.0,
                     "status": "degrading",
                 })
 
@@ -123,6 +165,7 @@ class FaultInjector:
                 endpoints = _resolve_link_nodes(sub_target)
                 if endpoints and self.graph.has_edge(*endpoints):
                     u, v = endpoints
+                    base_lat = float(self.graph.edges[u, v].get("base_latency", self.graph.edges[u, v].get("latency", 8.0)))
                     self.graph.edges[u, v].update({
                         "failure_risk": 1.0,
                         "packet_loss": 100.0,
@@ -131,9 +174,48 @@ class FaultInjector:
                         "status": "failed",
                     })
                     agent_manager.fire_trap(sub_target, timestamp=timestamp)
+                    canon_link = f"{min(u, v)}-{max(u, v)}"
+                    final_reading = TelemetryReading(
+                        timestamp=round(timestamp, 3),
+                        link=canon_link,
+                        latency=round(base_lat + 342.0, 2),
+                        jitter=45.0,
+                        packet_loss=100.0,
+                        queue=0.0,
+                        throughput=0.0,
+                        utilization=0.0,
+                        state="failed",
+                    )
+                    bus.publish(TOPIC_TELEMETRY, final_reading)
                 elif self.graph.has_node(sub_target):
-                    self.graph.nodes[sub_target]["status"] = "down"
-                    agent_manager.fire_trap(sub_target, timestamp=timestamp)
+                    node_str = sub_target
+                    affected_edges = []
+                    self.graph.nodes[node_str]["status"] = "down"
+                    for neighbor in sorted(list(self.graph.neighbors(node_str))):
+                        base_lat = float(self.graph.edges[node_str, neighbor].get("base_latency", self.graph.edges[node_str, neighbor].get("latency", 8.0)))
+                        affected_edges.append((node_str, neighbor, base_lat))
+                        self.graph.edges[node_str, neighbor].update({
+                            "failure_risk": 1.0,
+                            "packet_loss": 100.0,
+                            "throughput": 0.0,
+                            "ifOperStatus": 2,
+                            "status": "failed",
+                        })
+                    agent_manager.fire_trap(node_str, timestamp=timestamp)
+                    for u, v, base_lat in affected_edges:
+                        canon_link = f"{min(u, v)}-{max(u, v)}"
+                        final_reading = TelemetryReading(
+                            timestamp=round(timestamp, 3),
+                            link=canon_link,
+                            latency=round(base_lat + 342.0, 2),
+                            jitter=45.0,
+                            packet_loss=100.0,
+                            queue=0.0,
+                            throughput=0.0,
+                            utilization=0.0,
+                            state="failed",
+                        )
+                        bus.publish(TOPIC_TELEMETRY, final_reading)
 
         # 2. Sync to SNMP agent MIB tables
         agent_manager.sync_telemetry(self.graph)

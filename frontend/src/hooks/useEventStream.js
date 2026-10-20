@@ -15,6 +15,7 @@ export function useEventStream() {
   const [alerts, setAlerts] = useState([])
   const [reroutes, setReroutes] = useState([])
   const [telemetry, setTelemetry] = useState(new Map())
+  const [metricsSummary, setMetricsSummary] = useState(null)
   const [wsStatus, setWsStatus] = useState('reconnecting')
 
   const handleMessage = useCallback((msg) => {
@@ -27,6 +28,24 @@ export function useEventStream() {
         next.set(payload.link, payload)
         return next
       })
+    } else if (type === 'metrics.summary') {
+      setMetricsSummary(payload)
+      // Prune inactive/down links from telemetry map so stale readings are never carried over
+      if (Array.isArray(payload.active_links)) {
+        const activeSet = new Set(payload.active_links)
+        setTelemetry((prev) => {
+          let changed = false
+          const next = new Map()
+          for (const [k, v] of prev.entries()) {
+            if (activeSet.has(k)) {
+              next.set(k, v)
+            } else {
+              changed = true
+            }
+          }
+          return changed ? next : prev
+        })
+      }
     } else if (type === 'alert.raised') {
       setAlerts((prev) => [{ ...payload, _id: Date.now() + Math.random() }, ...prev].slice(0, 100))
     } else if (type === 'reroute.completed') {
@@ -38,6 +57,7 @@ export function useEventStream() {
     setAlerts([])
     setReroutes([])
     setTelemetry(new Map())
+    setMetricsSummary(null)
   }, [])
 
   useEffect(() => {
@@ -45,5 +65,5 @@ export function useEventStream() {
     return cleanup
   }, [handleMessage])
 
-  return { alerts, reroutes, telemetry, wsStatus, clearAll }
+  return { alerts, reroutes, telemetry, metricsSummary, wsStatus, clearAll }
 }
