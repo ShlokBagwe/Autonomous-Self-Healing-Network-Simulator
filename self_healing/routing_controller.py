@@ -241,6 +241,11 @@ class RoutingController:
             logger.warning(f"No surviving route from {source} to {dest}: {e}")
             new_path = []
 
+        # Deduplication guard: if route is already optimal or unchanged, avoid duplicate reroute
+        if new_path == old_path:
+            logger.debug(f"Path for ({source}, {dest}) already optimal ({new_path}); skipping duplicate reroute.")
+            return None
+
         # Compute recovery latency in milliseconds relative to t_fault_onset (or alert timestamp)
         onset_time = self.fault_onset_times.pop(failed_link, trigger_alert.timestamp)
         if onset_time < trigger_alert.timestamp - 5.0:

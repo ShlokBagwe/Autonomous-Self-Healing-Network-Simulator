@@ -16,6 +16,29 @@ EVENTS_LOG_FILE = LOGS_DIR / "events.jsonl"
 POLL_INTERVAL_SEC = 1.0
 DEFAULT_NODE_COUNT = 10
 
+# Progressive Degradation Configuration (Member 1 & Member 2)
+# Step delta applied on each POLL_INTERVAL_SEC tick when an edge status is "degrading"
+DEGRADATION_STEP = {
+    "latency": 4.5,            # +4.5 ms per poll
+    "jitter": 1.2,             # +1.2 ms per poll
+    "packet_loss": 0.6,        # +0.6% per poll
+    "queue": 3.5,              # +3.5 packets per poll
+    "utilization": 0.04,       # +0.04 utilization per poll
+    "throughput": -4.0,        # -4.0 Mbps per poll
+    "congestion_level": 0.05,  # +0.05 congestion score per poll
+}
+
+# Ceilings and floors for progressive degradation
+DEGRADATION_CEILING = {
+    "latency": 110.0,
+    "jitter": 25.0,
+    "packet_loss": 15.0,
+    "queue": 80.0,
+    "utilization": 0.95,
+    "throughput": 15.0,        # Minimum throughput floor
+    "congestion_level": 0.95,
+}
+
 # Member 3: Reconciliation Window
 RECONCILE_WINDOW_SEC = 2.0
 

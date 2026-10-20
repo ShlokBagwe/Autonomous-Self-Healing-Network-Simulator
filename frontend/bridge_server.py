@@ -38,9 +38,18 @@ from telemetry.snmp_poller import poll_all_nodes
 from ml_engine.inference import MLInferenceService
 from self_healing.routing_controller import RoutingController
 from self_healing.alert_reconciler import AlertReconciler
+from evaluation.metrics import compute_avg_rtt_latency
 
 logger = logging.getLogger("bridge_server")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+
+_latest_metrics: dict[str, Any] = {
+    "avg_rtt_latency": 8.0,
+    "active_links_count": 17,
+    "active_links": [],
+    "agreement_rate": None,
+    "timestamp": 0.0,
+}
 
 app = FastAPI(title="Autonomous Self-Healing Network Bridge Server")
 
@@ -110,13 +119,40 @@ def _schedule_broadcast(msg_type: str, payload_obj: Any) -> None:
     asyncio.run_coroutine_threadsafe(_send_all(), _event_loop)
 
 
+def _on_alert_raised(alert):
+    """Broadcast alert.raised and update reconciliation agreement_rate in metrics.summary."""
+    _schedule_broadcast("alert.raised", alert)
+    stats = reconciler.get_summary_stats()
+    if stats["total_records"] > 0:
+        _latest_metrics["agreement_rate"] = stats["agreement_rate"]
+    elif len(reconciler.unpaired_alerts) > 0:
+        _latest_metrics["agreement_rate"] = 0.0
+    _schedule_broadcast("metrics.summary", _latest_metrics)
+
+
 bus.subscribe(TOPIC_TELEMETRY, lambda p: _schedule_broadcast("telemetry.reading", p))
-bus.subscribe(TOPIC_ALERT,     lambda p: _schedule_broadcast("alert.raised", p))
+bus.subscribe(TOPIC_ALERT,     _on_alert_raised)
 bus.subscribe(TOPIC_REROUTE,   lambda p: _schedule_broadcast("reroute.completed", p))
 
 
 # ── Periodic SNMP polling loop (background thread) ───────────────────────────
 _stop_polling = threading.Event()
+
+
+def _update_latest_metrics(readings, timestamp: float) -> None:
+    """Update _latest_metrics dictionary with latest telemetry and reconciliation data."""
+    _latest_metrics["avg_rtt_latency"] = compute_avg_rtt_latency(readings)
+    _latest_metrics["active_links_count"] = len(readings)
+    _latest_metrics["active_links"] = [r.link for r in readings]
+    reconciler.flush_pending(current_time=timestamp)
+    stats = reconciler.get_summary_stats()
+    if stats["total_records"] > 0:
+        _latest_metrics["agreement_rate"] = stats["agreement_rate"]
+    elif len(reconciler.unpaired_alerts) > 0:
+        _latest_metrics["agreement_rate"] = 0.0
+    else:
+        _latest_metrics["agreement_rate"] = None
+    _latest_metrics["timestamp"] = round(timestamp, 2)
 
 
 def _polling_loop():
@@ -129,7 +165,9 @@ def _polling_loop():
     while not _stop_polling.is_set():
         try:
             t = time.time()
-            poll_all_nodes(graph, timestamp=t)
+            readings = poll_all_nodes(graph, timestamp=t)
+            _update_latest_metrics(readings, t)
+            _schedule_broadcast("metrics.summary", _latest_metrics)
         except Exception as e:
             logger.error(f"Polling error: {e}")
         _stop_polling.wait(POLL_INTERVAL_SEC)
@@ -142,6 +180,11 @@ def _polling_loop():
 async def startup_event():
     global _event_loop
     _event_loop = asyncio.get_running_loop()
+
+    # Pre-poll once to populate initial baseline metrics
+    t = time.time()
+    readings = poll_all_nodes(graph, timestamp=t)
+    _update_latest_metrics(readings, t)
 
     # Start background polling thread
     _poll_thread = threading.Thread(target=_polling_loop, daemon=True, name="snmp-poller")
@@ -164,6 +207,9 @@ async def websocket_events_endpoint(websocket: WebSocket):
     connected_clients.append(websocket)
     logger.info(f"WebSocket client connected. Total: {len(connected_clients)}")
     try:
+        # Immediately send current metrics summary to newly connected client
+        if _latest_metrics.get("active_links_count", 0) > 0:
+            await websocket.send_text(_make_message("metrics.summary", _latest_metrics))
         while True:
             # Keep the connection alive; we don't expect client → server messages
             await asyncio.sleep(10)
@@ -199,13 +245,18 @@ def get_topology():
         for u, v, data in graph.edges(data=True)
     ]
     active_paths = {f"{k[0]}->{k[1]}": v for k, v in controller.active_paths.items()}
-    return {"nodes": nodes, "edges": edges, "active_paths": active_paths}
+    return {"nodes": nodes, "edges": edges, "active_paths": active_paths, "metrics": _latest_metrics}
 
 
 @app.post("/api/fault")
 def inject_fault_endpoint(req: FaultRequest):
     """Inject a network fault (calls Member 1's FaultInjector)."""
     payload = injector.inject(kind=req.kind, target=req.target)
+    # Immediately recompute metrics fresh upon fault injection
+    t = time.time()
+    readings = poll_all_nodes(graph, timestamp=t)
+    _update_latest_metrics(readings, t)
+    _schedule_broadcast("metrics.summary", _latest_metrics)
     return {"status": "ok", "fault": payload}
 
 
@@ -215,6 +266,14 @@ def reset_network_endpoint():
     injector.reset_faults()
     controller.set_active_path("A", "E", ["A", "B", "C", "D", "E"])
     _ml_service.reset_state()
+    with reconciler._lock:
+        reconciler.reconciliation_history.clear()
+        reconciler.unpaired_alerts.clear()
+    # Immediately recompute baseline metrics fresh
+    t = time.time()
+    readings = poll_all_nodes(graph, timestamp=t)
+    _update_latest_metrics(readings, t)
+    _schedule_broadcast("metrics.summary", _latest_metrics)
     return {"status": "ok", "message": "Network restored to healthy state."}
 
 

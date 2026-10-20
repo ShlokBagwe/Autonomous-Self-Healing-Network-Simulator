@@ -10,7 +10,7 @@ import RerouteLog      from './components/RerouteLog'
 import FeatureImportance from './components/FeatureImportance'
 
 export default function App() {
-  const { alerts, reroutes, telemetry, wsStatus, clearAll } = useEventStream()
+  const { alerts, reroutes, telemetry, metricsSummary, wsStatus, clearAll } = useEventStream()
   const [topology, setTopology] = useState(null)
   const [selectedElement, setSelectedElement] = useState(null) // { id, type }
   const [selectedSet, setSelectedSet] = useState(new Set())
@@ -120,7 +120,12 @@ export default function App() {
             <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
               📊 Live Metrics
             </h2>
-            <MetricsPanel telemetry={telemetry} alerts={alerts} reroutes={reroutes} />
+            <MetricsPanel
+              telemetry={telemetry}
+              alerts={alerts}
+              reroutes={reroutes}
+              metricsSummary={metricsSummary || topology?.metrics}
+            />
           </div>
 
           {/* Tabbed: Alerts · Reroutes · XAI */}

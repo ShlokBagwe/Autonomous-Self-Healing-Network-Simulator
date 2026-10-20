@@ -21,6 +21,18 @@ from shared.schemas import Alert, ReconciliationRecord
 logger = logging.getLogger("alert_reconciler")
 
 
+def normalize_link_key(link: str) -> str:
+    """
+    Normalize link representation to canonical undirected form (e.g. 'F-E' -> 'E-F', or 'A' -> 'A').
+    Ensures identical link matching regardless of endpoint ordering.
+    """
+    parts = link.strip().split("-", 1)
+    if len(parts) == 2:
+        u, v = parts[0].strip(), parts[1].strip()
+        return f"{min(u, v)}-{max(u, v)}"
+    return link.strip()
+
+
 class AlertReconciler:
     """
     Subscribes to 'alert.raised', pairs SNMP TRAP and ML alerts within RECONCILE_WINDOW_SEC,
@@ -54,17 +66,20 @@ class AlertReconciler:
         Returns a ReconciliationRecord if agreement occurs, else buffers the alert.
         """
         with self._lock:
-            link = alert.link.strip()
-            pending_list = self.unpaired_alerts.setdefault(link, [])
+            canonical_link = normalize_link_key(alert.link)
+            pending_list = self.unpaired_alerts.setdefault(canonical_link, [])
 
-            # Search for a matching alert from the opposite source within the time window
+            # Search for a matching alert: MUST be opposite source AND identical link AND within time window
             matched_index = None
             for idx, pending in enumerate(pending_list):
-                if pending.source != alert.source:
-                    time_delta = abs(alert.timestamp - pending.timestamp)
-                    if time_delta <= self.window_sec:
-                        matched_index = idx
-                        break
+                is_opposite_source = (pending.source != alert.source)
+                is_same_link = (normalize_link_key(pending.link) == canonical_link)
+                time_delta = abs(alert.timestamp - pending.timestamp)
+                is_within_window = (time_delta <= self.window_sec)
+
+                if is_opposite_source and is_same_link and is_within_window:
+                    matched_index = idx
+                    break
 
             if matched_index is not None:
                 # Opposite alert found within window -> Agreement!
@@ -77,7 +92,7 @@ class AlertReconciler:
 
                 record = ReconciliationRecord(
                     timestamp=alert.timestamp,
-                    link=link,
+                    link=canonical_link,
                     agreement=True,
                     sources=["snmp_trap", "ml_engine"],
                     trap_timestamp=trap_alert.timestamp,

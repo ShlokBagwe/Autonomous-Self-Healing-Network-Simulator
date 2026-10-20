@@ -291,7 +291,7 @@ Open **`http://localhost:8000`** — FastAPI serves the built React app via `Sta
 
 ## 🛠️ Recent System Hardening & Bug Fixes
 
-A comprehensive multi-phase audit and progressive failure test sequence identified and resolved 9 critical correctness issues across all modules:
+A comprehensive multi-phase audit and progressive failure test sequence identified and resolved 12 critical correctness issues across all modules:
 
 1. **State-Transition Alert Deduplication (Member 2 — `ml_engine/inference.py`):**
    - *Problem:* As long as a link stayed congested, the 1-second telemetry poller caused `MLInferenceService` to spam repeated alerts every second.
@@ -331,5 +331,27 @@ A comprehensive multi-phase audit and progressive failure test sequence identifi
      - In `routing_controller.py`, updated `is_operational_edge()` and `calculate_edge_cost()` to only prune edges or set cost to $10^9$ when `severity >= 0.8` (true hard failures/crashes). Congested edges (`severity < 0.8`) remain fully traversable in the graph view, naturally deprioritized by the dynamic cost formula ($\text{Cost} \approx 200$ vs $\approx 8$) but still usable if no alternate path exists.
      - In `TopologyGraph.jsx`, decoupled alert parsing into `faultedLinks` (hard failures) and `congestedLinks` (`predicted_state === "congested"` / `"degrading"`). Added SVG `<filter id="glow-amber">` and updated edge rendering: congested edges are rendered with solid amber lines (`#f59e0b`), amber glow on active routes, and amber latency readouts (never displaying `'FAILED'`).
      - Added automated regression test `test_routing_controller_congested_edges_remain_traversable` in `tests/test_member_3.py`.
+
+10. **Mean MTTR Metric Aggregate Formatting Precision (Member 4 — `frontend/src/components/MetricsPanel.jsx`):**
+    - *Problem:* After a router crash or fast recoveries causing reroutes with logged sub-millisecond MTTRs (e.g. `0.3 ms` and `0.5 ms`), the aggregate "Mean MTTR" metric tile displayed `"0 ms"`. The underlying arithmetic mean `(0.3 + 0.5) / 2 = 0.4 ms` was calculated correctly, but `.toFixed(0)` truncated it to integer zero, hiding genuinely fast non-zero recoveries.
+    - *Fix:* Changed `.toFixed(0)` to `.toFixed(1)` in `MetricsPanel.jsx`, consistent with individual reroute log entries (e.g. `0.4 ms`). Added automated unit test `test_mean_mttr_submillisecond_precision` in `tests/test_full_system.py`.
+
+11. **Genuinely Progressive Degradation Telemetry & Delayed Early-Warning Alerting (Member 1 & 2 — `shared/config.py`, `network_sim/fault_injector.py`, `telemetry/snmp_poller.py`):**
+    - *Problem:* Injecting `degradation` on a link was static, immediately setting fixed telemetry values (`latency: 65.0, jitter: 15.0, queue: 30, packet_loss: 4.5, throughput: 45.0`) and freezing there on subsequent polls (same pattern as congestion), rather than acting as a progressive worsening condition for early warning.
+    - *Fix:*
+      - Defined `DEGRADATION_STEP` and `DEGRADATION_CEILING` in `shared/config.py` (incrementing latency by +4.5 ms, jitter by +1.2 ms, packet loss by +0.6%, queue by +3.5, utilization by +0.04, and decrementing throughput by -4.0 Mbps per poll).
+      - Initialized `degradation` in `fault_injector.py` at mild onset levels (`status="degrading"`).
+      - In `snmp_poller.py`, on each `POLL_INTERVAL_SEC` tick, incrementally worsened the degrading link's telemetry towards its ceiling and synchronized MIB tables.
+      - Verified that ML inference classifies early polls as healthy, then transitions to `congested` after 2–3 ticks, triggering delayed proactive self-healing reroute before full failure. Added automated tests `test_progressive_degradation_tick_evolution` and `test_progressive_degradation_delayed_ml_alert` in `tests/test_full_system.py`.
+
+12. **Standardized Avg RTT Latency as Unified Single Source of Truth (All Members — `evaluation/metrics.py`, `telemetry/snmp_poller.py`, `frontend/bridge_server.py`, `useEventStream.js`, `MetricsPanel.jsx`):**
+    - *Problem:* Inconsistent aggregate Avg RTT Latency behavior across faults: degrading `D-E` pushed aggregate Avg RTT Latency up to match that single link's own value (~14 ms) because frontend React state cleared on reset and averaged single-reading slices, while failing `D-E` left the average unchanged because `snmp_poller.py` was generating fake baseline readings for down links.
+    - *Fix:*
+      - Standardized to one canonical backend formula in `evaluation/metrics.py`: `compute_avg_rtt_latency(readings)`, computing the exact arithmetic mean of the `latency` field from valid telemetry readings across operational links.
+      - Updated `telemetry/snmp_poller.py` to omit links with `ifOperStatus == 2`, `status == "failed"`, or crashed routers from polling responses (simulating true SNMP timeout/unreachability), dropping them from both the sum and count.
+      - Updated `frontend/bridge_server.py` to compute `avg_rtt_latency` fresh on every poll cycle, `/api/fault`, and `/api/reset`, broadcasting `metrics.summary` and returning it on `/api/topology`.
+      - Updated `useEventStream.js` to ingest `metrics.summary` and prune inactive links from the telemetry map.
+      - Updated `MetricsPanel.jsx` to consume `metricsSummary.avg_rtt_latency` as the single source of truth, with a standardized fallback applying the exact same formula. Added automated test `test_standardized_avg_rtt_latency_formula` in `tests/test_full_system.py`.
+
 
 
